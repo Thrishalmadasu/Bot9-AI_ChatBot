@@ -132,6 +132,8 @@
     </div>
 
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
     <script>
         const chatContainer = document.getElementById('chat-container');
         const userInput = document.getElementById('user-input');
@@ -177,30 +179,34 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
         
-        function formatBotMessage(message) {
-            message = message.replace(/Room Options:([\s\S]*?)(?=\n\n|$)/, function(match, p1) {
-                const rows = p1.trim().split('\n');
-                let table = '<table><tr><th>Room</th><th>Price</th><th>Beds</th></tr>';
-                rows.forEach(row => {
-                    const [room, price, beds] = row.split(' - ');
-                    table += `<tr><td>${room}</td><td>${price}</td><td>${beds}</td></tr>`;
-                });
-                table += '</table>';
-                return 'Room Options:' + table;
-            });
+    function formatBotMessage(message) {
+    // Format Room Options
+    message = message.replace(/Room Options:([\s\S]*?)(?=\n\n|$)/, function(match, p1) {
+    const rows = p1.trim().split('\n');
+    let table = '<table><tr><th>Room</th><th>Price</th><th>Description</th></tr>';
+    rows.forEach(row => {
+      const [room, price, ...descriptionParts] = row.split(' - ');
+      const description = descriptionParts.join(' - '); // Join description parts in case they contain hyphens
+      table += `<tr><td>${room}</td><td>${price}</td><td>${description}</td></tr>`;
+    });
+    table += '</table>';
+    return 'Room Options:' + table;
+  });
+  
+  // Format Booking Confirmation
+  message = message.replace(/Booking Confirmation:([\s\S]*?)(?=\n\n|$)/, function(match, p1) {
+    const items = p1.trim().split('\n');
+    let list = '<ul>';
+    items.forEach(item => {
+      const [key, value] = item.split(':').map(part => part.trim());
+      list += `<li><strong>${key}:</strong> ${value}</li>`;
+    });
+    list += '</ul>';
+    return 'Booking Confirmation:' + list;
+  });
 
-            message = message.replace(/Booking Confirmation:([\s\S]*?)(?=\n\n|$)/, function(match, p1) {
-                const items = p1.trim().split('\n');
-                let list = '<ul>';
-                items.forEach(item => {
-                    list += `<li>${item.trim()}</li>`;
-                });
-                list += '</ul>';
-                return 'Booking Confirmation:' + list;
-            });
-
-            return message;
-        }
+  return marked.parse(message);
+}
 
         appendMessage("Welcome to Bot9 Palace! How can I assist you today?", 'bot');
     </script>

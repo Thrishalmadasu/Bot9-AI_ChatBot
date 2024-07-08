@@ -4,7 +4,7 @@ require('dotenv').config();
 const OpenAI = require('openai');
 const { Message } = require('./database');
 const { getRooms, bookRoom } = require('./hotelFunctions');
-const nodemailer = require('nodemailer');
+const emailjs = require('@emailjs/browser');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,38 +16,24 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Email transporter
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-});
-
 async function sendBookingConfirmation(email, bookingDetails) {
-  const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to: email,
-    subject: 'Your Hotel Booking Confirmation',
-    html: `
-      <h1>Booking Confirmation</h1>
-      <p>Thank you for your booking. Here are your details:</p>
-      <ul>
-        <li>Room: ${bookingDetails.room}</li>
-        <li>Price: $${bookingDetails.price} per night</li>
-        <li>Nights: ${bookingDetails.nights}</li>
-        <li>Total: $${bookingDetails.total}</li>
-        <li>Booking ID: ${bookingDetails.bookingId}</li>
-      </ul>
-      <p>We look forward to your stay!</p>
-    `
+  const templateParams = {
+    to_email: email,
+    room: bookingDetails.room,
+    price: bookingDetails.price,
+    nights: bookingDetails.nights,
+    total: bookingDetails.total,
+    booking_id: bookingDetails.bookingId,
   };
 
   try {
-    await transporter.sendMail(mailOptions);
+    await emailjs.send(
+      process.env.EMAILJS_SERVICE_ID,
+      process.env.EMAILJS_TEMPLATE_ID,
+      templateParams,
+      process.env.EMAILJS_PUBLIC_KEY
+    );
+    console.log('Booking confirmation email sent successfully');
     return true;
   } catch (error) {
     console.error('Error sending booking confirmation email:', error);
@@ -68,74 +54,92 @@ app.post('/chat', async (req, res) => {
     const history = await Message.findAll({
       where: { sessionId },
       order: [['createdAt', 'ASC']],
-      limit: 10
+      limit: 30,
     });
 
-    const messages = history.map(msg => ({
+    const messages = history.map((msg) => ({
       role: msg.sender === 'user' ? 'user' : 'assistant',
-      content: msg.content
+      content: msg.content,
     }));
 
     messages.push({ role: 'user', content: message });
 
-    
     const systemMessage = {
       role: 'system',
-      content: `You are a friendly and helpful hotel booking assistant. 
-      Your primary focus is to help customers book rooms and answer questions 
-      related to hotel stays. Adapt your language and tone to match the customer's
-      style of communication. If they use informal language or a mix of languages
-      (like Hinglish), respond in a similar manner. Do not engage in conversations
-      unrelated to hotel bookings or stays. If asked about unrelated topics, politely redirect the conversation 
-      back to hotel-related matters.`
+      content: `You are a friendly and helpful hotel booking assistant for Bot9 Palace. Your primary focus is to help customers book rooms and answer questions related to hotel stays. Follow these guidelines:
+
+1. Always collect complete information for bookings:
+   - Full name
+   - Email address
+   - Room type preference
+   - Number of nights
+   - Check-in date
+
+2. If any information is missing, politely ask for it before proceeding with a booking.
+
+3. Present room options clearly, including room type, price, and a brief description.
+
+4. Confirm booking details with the user before finalizing.
+
+5. Adapt your language to match the customer's style of communication. If they use informal language or a mix of languages (like Hinglish), respond similarly.
+
+6. Answer questions about hotel amenities, policies, and local attractions.
+
+7. If asked about unrelated topics, politely redirect the conversation back to hotel-related matters.
+
+8. Always format room options and booking confirmations using markdown for clear, consistent structures.
+
+Remember, your goal is to provide excellent customer service and ensure a smooth booking process for Bot9 Palace.
+
+When presenting room options or booking confirmations, give in readable format line line by line`,
     };
 
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: 'gpt-3.5-turbo',
       messages: [systemMessage, ...messages],
       functions: [
         {
-          name: "get_rooms",
-          description: "Get available hotel rooms",
-          parameters: { type: "object", properties: {} }
+          name: 'get_rooms',
+          description: 'Get available hotel rooms',
+          parameters: { type: 'object', properties: {} },
         },
         {
-          name: "book_room",
-          description: "Book a hotel room",
+          name: 'book_room',
+          description: 'Book a hotel room',
           parameters: {
-            type: "object",
+            type: 'object',
             properties: {
-              roomId: { type: "integer" },
-              fullName: { type: "string" },
-              email: { type: "string" },
-              nights: { type: "integer" }
+              roomId: { type: 'integer' },
+              fullName: { type: 'string' },
+              email: { type: 'string' },
+              nights: { type: 'integer' },
             },
-            required: ["roomId", "fullName", "email", "nights"]
-          }
+            required: ['roomId', 'fullName', 'email', 'nights'],
+          },
         },
         {
-          name: "send_booking_email",
-          description: "Send booking confirmation email",
+          name: 'send_booking_email',
+          description: 'Send booking confirmation email',
           parameters: {
-            type: "object",
+            type: 'object',
             properties: {
-              email: { type: "string" },
+              email: { type: 'string' },
               bookingDetails: {
-                type: "object",
+                type: 'object',
                 properties: {
-                  room: { type: "string" },
-                  price: { type: "number" },
-                  nights: { type: "number" },
-                  total: { type: "number" },
-                  bookingId: { type: "string" }
-                }
-              }
+                  room: { type: 'string' },
+                  price: { type: 'number' },
+                  nights: { type: 'number' },
+                  total: { type: 'number' },
+                  bookingId: { type: 'string' },
+                },
+              },
             },
-            required: ["email", "bookingDetails"]
-          }
-        }
+            required: ['email', 'bookingDetails'],
+          },
+        },
       ],
-      function_call: "auto",
+      function_call: 'auto',
     });
 
     let botReply = response.choices[0].message.content;
@@ -152,27 +156,27 @@ app.post('/chat', async (req, res) => {
           functionArgs.roomId,
           functionArgs.fullName,
           functionArgs.email,
-          functionArgs.nights
+          functionArgs.nights,
         );
       } else if (functionName === 'send_booking_email') {
         functionResult = await sendBookingConfirmation(
           functionArgs.email,
-          functionArgs.bookingDetails
+          functionArgs.bookingDetails,
         );
       }
 
       const secondResponse = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
+        model: 'gpt-3.5-turbo',
         messages: [
           systemMessage,
           ...messages,
           response.choices[0].message,
           {
-            role: "function",
+            role: 'function',
             name: functionName,
-            content: JSON.stringify(functionResult)
-          }
-        ]
+            content: JSON.stringify(functionResult),
+          },
+        ],
       });
 
       botReply = secondResponse.choices[0].message.content;
